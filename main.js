@@ -1,29 +1,31 @@
+require('update-electron-app')({
+  logger: require('electron-log')
+})
+
 const path = require('path')
 const glob = require('glob')
-const electron = require('electron')
-const autoUpdater = require('./auto-updater')
-
-const BrowserWindow = electron.BrowserWindow
-const app = electron.app
+const {app, BrowserWindow} = require('electron')
 
 const debug = /--debug/.test(process.argv[2])
 
 if (process.mas) app.setName('Electron APIs')
 
-var mainWindow = null
+let mainWindow = null
 
 function initialize () {
-  var shouldQuit = makeSingleInstance()
-  if (shouldQuit) return app.quit()
+  makeSingleInstance()
 
   loadDemos()
 
   function createWindow () {
-    var windowOptions = {
+    const windowOptions = {
       width: 1080,
       minWidth: 680,
       height: 840,
-      title: app.getName()
+      title: app.getName(),
+      webPreferences: {
+        nodeIntegration: true
+      }
     }
 
     if (process.platform === 'linux') {
@@ -40,23 +42,22 @@ function initialize () {
       require('devtron').install()
     }
 
-    mainWindow.on('closed', function () {
+    mainWindow.on('closed', () => {
       mainWindow = null
     })
   }
 
-  app.on('ready', function () {
+  app.on('ready', () => {
     createWindow()
-    autoUpdater.initialize()
   })
 
-  app.on('window-all-closed', function () {
+  app.on('window-all-closed', () => {
     if (process.platform !== 'darwin') {
       app.quit()
     }
   })
 
-  app.on('activate', function () {
+  app.on('activate', () => {
     if (mainWindow === null) {
       createWindow()
     }
@@ -71,9 +72,11 @@ function initialize () {
 // Returns true if the current version of the app should quit instead of
 // launching.
 function makeSingleInstance () {
-  if (process.mas) return false
+  if (process.mas) return
 
-  return app.makeSingleInstance(function () {
+  app.requestSingleInstanceLock()
+
+  app.on('second-instance', () => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
       mainWindow.focus()
@@ -83,25 +86,8 @@ function makeSingleInstance () {
 
 // Require each JS file in the main-process dir
 function loadDemos () {
-  var files = glob.sync(path.join(__dirname, 'main-process/**/*.js'))
-  files.forEach(function (file) {
-    require(file)
-  })
-  autoUpdater.updateMenu()
+  const files = glob.sync(path.join(__dirname, 'main-process/**/*.js'))
+  files.forEach((file) => { require(file) })
 }
 
-// Handle Squirrel on Windows startup events
-switch (process.argv[1]) {
-  case '--squirrel-install':
-    autoUpdater.createShortcut(function () { app.quit() })
-    break
-  case '--squirrel-uninstall':
-    autoUpdater.removeShortcut(function () { app.quit() })
-    break
-  case '--squirrel-obsolete':
-  case '--squirrel-updated':
-    app.quit()
-    break
-  default:
-    initialize()
-}
+initialize()
